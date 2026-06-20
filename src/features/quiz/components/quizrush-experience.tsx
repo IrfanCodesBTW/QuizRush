@@ -160,7 +160,7 @@ export function QuizRushExperience() {
     if (!player) {
       return null;
     }
-    const id = player.id || player.playerId;
+    const id = player.id || (player as any).playerId;
     const roomPlayer = snapshot?.players.find((item) => item.id === id);
     return {
       ...(roomPlayer ?? player),
@@ -170,7 +170,7 @@ export function QuizRushExperience() {
 
   const isHost = Boolean(snapshot && currentPlayer?.id === snapshot.room.hostId);
   const currentQuestion = snapshot?.currentQuestion ?? null;
-  const roomCode = useMemo(() => snapshot?.room.code, [snapshot?.room.code, snapshot?.room.currentQuestionIndex]);
+  const roomCode = snapshot?.room.code;
   const questionStartedAt = currentQuestion && snapshot?.room.questionStartedAt
     ? new Date(snapshot.room.questionStartedAt).getTime()
     : null;
@@ -385,7 +385,7 @@ export function QuizRushExperience() {
       setAnsweredQuestionId(currentQuestion.id);
       setSnapshot(result.snapshot);
     }
-  }, [roomCode, currentQuestion, questionStartedAt, hasAnswered, runAction]);
+  }, [roomCode, currentQuestion, questionStartedAt, hasAnswered, runAction, snapshot?.room.currentQuestionIndex]);
 
   useEffect(() => {
     getJson<RuntimeStatus>("/api/runtime")
