@@ -21,6 +21,7 @@ export interface ValkeyStore {
   expire(key: string, seconds: number): Promise<void>;
   publish(channel: string, payload: string): Promise<void>;
   subscribe(pattern: string, handler: PubSubHandler): Promise<() => Promise<void>>;
+  keys(pattern: string): Promise<string[]>;
 }
 
 function cleanHash(values: HashValue) {
@@ -116,6 +117,10 @@ class RedisValkeyStore implements ValkeyStore {
       await subscriber.punsubscribe(pattern);
       subscriber.disconnect();
     };
+  }
+
+  async keys(pattern: string) {
+    return this.redis.keys(pattern);
   }
 }
 
@@ -261,6 +266,11 @@ class MemoryValkeyStore implements ValkeyStore {
     return async () => {
       this.emitter.off("*", listener);
     };
+  }
+
+  async keys(pattern: string) {
+    const regex = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
+    return Array.from(this.hashes.keys()).filter((k) => regex.test(k));
   }
 }
 

@@ -15,13 +15,18 @@ export type RoomEventType =
   | "room.created"
   | "player.joined"
   | "player.left"
+  | "player.kicked"
   | "game.started"
+  | "game.paused"
+  | "game.resumed"
   | "question.started"
   | "answer.submitted"
   | "answer.distribution.updated"
   | "leaderboard.updated"
   | "achievement.unlocked"
-  | "game.ended";
+  | "game.ended"
+  | "room.locked"
+  | "room.unlocked";
 
 export type AchievementType =
   | "Fast Thinker"
@@ -38,6 +43,8 @@ export interface QuizQuestion {
   explanation: string;
   durationMs: number;
 }
+
+export type ClientQuizQuestion = Omit<QuizQuestion, "correctAnswer" | "explanation">;
 
 export interface Player {
   id: string;
@@ -71,6 +78,8 @@ export interface Room {
   code: string;
   hostId: string;
   status: GameStatus;
+  isPaused?: boolean;
+  isLocked?: boolean;
   createdAt: string;
   updatedAt: string;
   currentQuestionIndex: number;
@@ -111,7 +120,7 @@ export interface RoomSnapshot {
   players: Player[];
   leaderboard: LeaderboardEntry[];
   events: RoomEvent[];
-  currentQuestion: QuizQuestion | null;
+  currentQuestion: ClientQuizQuestion | null;
   answerDistribution: AnswerDistribution | null;
   insights: AgentInsight[];
   serverNow: string;

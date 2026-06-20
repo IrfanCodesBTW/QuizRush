@@ -1,0 +1,64 @@
+          /* Room Launcher Screen */
+          <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
+            <section className="grid min-h-[70vh] items-center gap-6 lg:grid-cols-[0.9fr_1.1fr] w-full max-w-5xl mx-auto">
+              <div className="bg-white border-4 border-black rounded-poster p-6 brutalist-shadow h-full flex flex-col justify-center">
+                <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border-4 border-black bg-primary-container font-heading-md text-[36px] shadow-[4px_4px_0px_#000] select-none">
+                  {initials(currentPlayer.username)}
+                </div>
+                <h2 className="font-heading-lg text-heading-lg text-black uppercase drop-shadow-[2px_2px_0px_#FFD938]">
+                  Ready, {currentPlayer.username}?
+                </h2>
+                <p className="font-body-lg text-body-lg text-on-surface-variant mt-4 bg-surface-container border-2 border-black p-4 rounded-xl leading-relaxed">
+                  Host a room for your friends to showcase Valkey real-time operations, or join an active room code now!
+                </p>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* Host a Room Option */}
+                <div className="bg-white border-4 border-black rounded-poster p-6 brutalist-shadow flex flex-col justify-between h-[360px]">
+                  <div>
+                    <span className="material-symbols-outlined text-[48px] text-sticker-purple fill-icon mb-4">crown</span>
+                    <h3 className="font-heading-md text-[28px] uppercase text-black">Host a room</h3>
+                    <p className="font-body-md text-body-md text-on-surface-variant mt-2 leading-relaxed">
+                      Creates a TTL-backed room, registers you as host, and opens a customizable player lobby.
+                    </p>
+                  </div>
+                  <button
+                    onClick={createRoom}
+                    disabled={loading === "create-room"}
+                    className="w-full bg-sticker-purple border-4 border-black rounded-full py-3.5 flex items-center justify-center gap-2 font-label-bold text-label-bold text-black brutalist-shadow-sm hover:brutalist-shadow-hover active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-colors duration-200 disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined font-black">rocket_launch</span>
+                    <span>{loading === "create-room" ? "Hosting..." : "Create room"}</span>
+                  </button>
+                </div>
+
+                {/* Join a Room Option */}
+                <div className="bg-white border-4 border-black rounded-poster p-6 brutalist-shadow flex flex-col justify-between h-[360px]">
+                  <div>
+                    <span className="material-symbols-outlined text-[48px] text-primary-container fill-icon mb-4">group</span>
+                    <h3 className="font-heading-md text-[28px] uppercase text-black">Join a room</h3>
+                    <p className="font-body-md text-body-md text-on-surface-variant mt-2 leading-relaxed">
+                      Pushes your player hash into the active room set and subscribes to state change updates.
+                    </p>
+                    <input
+                      type="text"
+                      placeholder="QR-7421"
+                      value={roomInput}
+                      onChange={(e) => setRoomInput(formatRoomCode(e.target.value))}
+                      className="mt-4 w-full bg-white border-4 border-black rounded-full px-5 py-2.5 font-body-md text-body-md placeholder:text-secondary uppercase focus:outline-none focus:ring-4 focus:ring-electric-blue/30"
+                    />
+                  </div>
+                  <button
+                    onClick={joinRoom}
+                    disabled={loading === "join-room"}
+                    className="w-full bg-primary-container border-4 border-black rounded-full py-3.5 flex items-center justify-center gap-2 font-label-bold text-label-bold text-black brutalist-shadow-sm hover:brutalist-shadow-hover active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-colors duration-200 disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined font-black">arrow_right_alt</span>
+                    <span>{loading === "join-room" ? "Joining..." : "Join room"}</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+          </motion.div>
+        ) : (

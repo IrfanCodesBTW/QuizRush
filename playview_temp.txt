@@ -1,0 +1,242 @@
+              {activeTab === "play" && (
+                <motion.div
+                  key="play"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -15 }}
+                  className="flex flex-col gap-6"
+                >
+                  {/* Play Header */}
+                  <header className="mb-6 flex flex-col items-center text-center border-b-4 border-black pb-4">
+                    <h2 className="font-hero-xl text-hero-xl-mobile md:text-hero-xl text-black uppercase drop-shadow-[4px_4px_0px_#C9A8FF] leading-none text-center">
+                      {snapshot.room.status === "lobby"
+                        ? "Lobby Setup"
+                        : snapshot.room.status === "ended"
+                          ? "Quiz Finished"
+                          : `Question ${snapshot.room.currentQuestionIndex + 1}`}
+                    </h2>
+                    <p className="font-body-lg text-body-lg text-on-surface-variant mt-4 bg-white border-2 border-black px-6 py-2 inline-block rounded-full brutalist-shadow-sm rotate-[-1deg]">
+                      {snapshot.room.status === "lobby"
+                        ? `Share Room Code: ${snapshot.room.code}`
+                        : snapshot.room.status === "ended"
+                          ? "Final positions revealed!"
+                          : `Lobby pacing active`}
+                    </p>
+                  </header>
+
+                  {/* Lobby Setup Stage */}
+                  {snapshot.room.status === "lobby" && (
+                    <div className="bg-white border-4 border-black rounded-poster p-6 brutalist-shadow w-full max-w-4xl mx-auto flex flex-col md:flex-row gap-6">
+                      <div className="flex-1">
+                        <p className="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
+                          Host or join, players are pushed to Valkey Sets. Give the lobby code below to players:
+                        </p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {snapshot.players.map((p) => (
+                            <div
+                              key={p.id}
+                              className="flex items-center gap-2 bg-white border-2 border-black px-4 py-2 rounded-full shadow-[2px_2px_0px_#000] hover:translate-y-[-2px] active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-transform"
+                            >
+                              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-container text-xs font-bold border-2 border-black select-none text-black">
+                                {initials(p.username)}
+                              </span>
+                              <span className="font-label-bold text-label-bold text-black uppercase">{p.username}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-sticker-purple border-4 border-black rounded-poster p-6 text-center flex flex-col justify-center items-center brutalist-shadow w-full md:w-[280px]">
+                        <p className="font-hero-xl text-[64px] md:text-hero-xl text-black leading-none">{snapshot.players.length}</p>
+                        <p className="font-label-bold text-label-bold text-black uppercase mt-1">players ready</p>
+                        {isHost ? (
+                          <button
+                            onClick={startGame}
+                            disabled={loading === "start-game"}
+                            className="mt-6 w-full bg-white border-4 border-black rounded-full py-2.5 flex items-center justify-center gap-1.5 font-label-bold text-label-bold text-black brutalist-shadow-sm hover:brutalist-shadow-hover active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-colors duration-200"
+                          >
+                            <span className="material-symbols-outlined font-black">play_arrow</span>
+                            <span>Start Quiz</span>
+                          </button>
+                        ) : (
+                          <p className="mt-6 font-label-bold text-label-bold text-black uppercase animate-pulse">Waiting for host...</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quiz Core Gameplay State */}
+                  {currentQuestion && snapshot.room.status !== "lobby" && snapshot.room.status !== "ended" && (
+                    <div className="bg-white border-4 border-black rounded-poster p-6 brutalist-shadow w-full max-w-4xl mx-auto flex flex-col gap-6">
+                      <div className="flex items-center justify-between gap-4 border-b-4 border-black pb-4">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-[28px]">timer</span>
+                          <span className="font-heading-md text-[24px] uppercase text-black">
+                            {snapshot.room.status === "live" ? `${Math.ceil(remainingMs / 1000)}s left` : "Times Up!"}
+                          </span>
+                        </div>
+                        <div className="bg-emoji-yellow border-2 border-black px-4 py-2 rounded-full font-label-bold text-label-bold text-black brutalist-shadow-sm uppercase">
+                          Question {snapshot.room.currentQuestionIndex + 1}
+                        </div>
+                      </div>
+
+                      {/* Custom countdown bar */}
+                      <div className="h-8 w-full bg-surface-container border-4 border-black rounded-full overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full border-r-4 border-black transition-colors duration-200 duration-300",
+                            remainingMs < 5000 ? "bg-error-red animate-pulse" : "bg-electric-blue"
+                          )}
+                          style={{ width: `${currentQuestionProgress}%` }}
+                        ></div>
+                      </div>
+
+                      <h3 className="font-heading-md text-heading-md text-black uppercase leading-tight mt-2">
+                        {currentQuestion.prompt}
+                      </h3>
+
+                      <div className="grid gap-4 sm:grid-cols-2 mt-2">
+                        {answerOptions.map((option) => {
+                          const chosen = selected === option;
+                          const isCorrect = snapshot.room.status === "reveal" && option === currentQuestion.correctAnswer;
+
+                          let cardBg = "bg-white";
+                          let shadowColor = "#000";
+                          if (chosen) {
+                            cardBg = "bg-sticker-purple";
+                          }
+                          if (isCorrect) {
+                            cardBg = "bg-primary-container";
+                          }
+
+                          return (
+                            <button
+                              key={option}
+                              disabled={snapshot.room.status !== "live" || hasAnswered || loading === "answer"}
+                              onClick={() => answer(option)}
+                              className={cn(
+                                "min-h-[120px] rounded-poster p-4 border-4 border-black text-left brutalist-shadow-sm brutalist-shadow-hover transition-colors duration-200 flex flex-col justify-between group disabled:pointer-events-none",
+                                cardBg
+                              )}
+                            >
+                              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-black text-xs font-bold text-white border-2 border-white select-none shadow-[2px_2px_0px_#000]">
+                                {option}
+                              </span>
+                              <span className="block font-heading-md text-[20px] md:text-[24px] text-black uppercase mt-2 group-hover:text-rocket-orange transition-colors">
+                                {currentQuestion.options[option]}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Control Panel */}
+                      <div className="mt-4 flex flex-wrap gap-4 border-t-4 border-black pt-4">
+                        {hasAnswered && (
+                          <div className="inline-flex items-center gap-2 bg-primary-fixed border-2 border-black rounded-full px-4 py-2 font-label-bold text-label-bold text-on-primary-fixed shadow-[2px_2px_0px_#000] uppercase">
+                            <span className="material-symbols-outlined fill-icon text-[18px]">check_circle</span>
+                            <span>Answer locked</span>
+                          </div>
+                        )}
+                        {isHost && snapshot.room.status === "live" && (
+                          <button
+                            onClick={revealQuestion}
+                            disabled={loading === "reveal"}
+                            className="bg-emoji-yellow border-4 border-black rounded-full px-6 py-2.5 font-label-bold text-label-bold text-black brutalist-shadow-sm hover:brutalist-shadow-hover active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-colors duration-200 uppercase"
+                          >
+                            Reveal results
+                          </button>
+                        )}
+                        {isHost && snapshot.room.status === "reveal" && (
+                          <button
+                            onClick={advanceGame}
+                            disabled={loading === "advance"}
+                            className="bg-primary-container border-4 border-black rounded-full px-6 py-2.5 font-label-bold text-label-bold text-black brutalist-shadow-sm hover:brutalist-shadow-hover active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-colors duration-200 uppercase"
+                          >
+                            Next question
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Reveal Answer distribution chart */}
+                  {snapshot.room.status === "reveal" && snapshot.answerDistribution && (
+                    <div className="bg-white border-4 border-black rounded-poster p-6 brutalist-shadow w-full max-w-4xl mx-auto">
+                      <div className="mb-4 flex items-center justify-between border-b-2 border-black pb-2">
+                        <h3 className="font-heading-md text-heading-md uppercase text-black">Live distribution</h3>
+                        <span className="bg-surface-container border-2 border-black px-4 py-2 rounded-full font-label-bold text-label-bold text-black brutalist-shadow-sm uppercase">
+                          {snapshot.answerDistribution.totalAnswers} answers submitted
+                        </span>
+                      </div>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={snapshot.answerDistribution.options} layout="vertical" margin={{ left: 10, right: 10, top: 10, bottom: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#bccabf" />
+                            <XAxis type="number" hide domain={[0, "dataMax + 1"]} />
+                            <YAxis type="category" dataKey="option" width={30} tickLine={false} axisLine={false} />
+                            <Tooltip
+                              cursor={{ fill: "rgba(0,0,0,0.05)" }}
+                              formatter={(value, _name, item) => [
+                                `${value} votes (${item.payload.percentage}%)`,
+                                item.payload.label,
+                              ]}
+                            />
+                            <Bar dataKey="count" radius={[0, 8, 8, 0]}>
+                              {snapshot.answerDistribution.options.map((entry) => (
+                                <Cell
+                                  key={entry.option}
+                                  fill={entry.isCorrect ? "#83f9bd" : "#C9A8FF"}
+                                  stroke="#000"
+                                  strokeWidth={2}
+                                />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Ended Room / Result Reveal Stage */}
+                  {snapshot.room.status === "ended" && (
+                    <div className="bg-white border-4 border-black rounded-poster p-6 brutalist-shadow w-full max-w-4xl mx-auto flex flex-col md:flex-row gap-6">
+                      <div className="flex-1">
+                        <div className="mb-4 inline-flex items-center gap-2 bg-emoji-yellow border-2 border-black rounded-full px-4 py-2 font-label-bold text-label-bold text-black shadow-[2px_2px_0px_#000] uppercase">
+                          <span className="material-symbols-outlined fill-icon text-[18px]">emoji_events</span>
+                          <span>Final ranking ready</span>
+                        </div>
+                        <h3 className="font-heading-lg text-heading-lg text-black uppercase leading-none">
+                          Winner: {snapshot.leaderboard[0]?.username ?? "Nobody"}
+                        </h3>
+                        <p className="font-body-lg text-body-lg text-on-surface-variant mt-4 leading-relaxed bg-surface-container p-4 rounded-xl border-2 border-black">
+                          {snapshot.leaderboard[0]
+                            ? `Champion with ${snapshot.leaderboard[0].score} points! Download the leaderboard breakdown as a PDF to check your rank history.`
+                            : "Quiz concluded with no participants."}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-3">
+                        <a
+                          href={`/api/export/pdf/${snapshot.room.code}`}
+                          className="flex min-h-[100px] w-full md:w-[260px] flex-col items-center justify-center gap-1 bg-rocket-orange border-4 border-black text-white rounded-xl brutalist-shadow hover:brutalist-shadow-hover active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-colors duration-200 select-none"
+                        >
+                          <span className="material-symbols-outlined text-[32px]">download</span>
+                          <span className="font-heading-md text-[18px] uppercase text-center">Export PDF</span>
+                        </a>
+                        {isHost ? (
+                          <button
+                            onClick={createRoom}
+                            disabled={loading === "create-room"}
+                            className="flex min-h-[100px] w-full md:w-[260px] flex-col items-center justify-center gap-1 bg-electric-blue border-4 border-black text-white rounded-xl brutalist-shadow hover:brutalist-shadow-hover active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-colors duration-200 select-none cursor-pointer disabled:opacity-50"
+                          >
+                            <span className="material-symbols-outlined text-[32px]">replay</span>
+                            <span className="font-heading-md text-[18px] uppercase text-center">Play Again</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setSnapshot(null);
+                              setRoomInput("");
+                              setActiveTab("play");
+                            }}
+                            className="flex min-h-[100px] w-full md:w-[260px] flex-col items-center justify-center gap-1 bg-sticker-purple border-4 border-black text-black rounded-xl brutalist-shadow hover:brutalist-shadow-hover active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-colors duration-200 select-none cursor-pointer"
+                          >

@@ -1,0 +1,67 @@
+<USER_REQUEST>
+/brainstorming 
+
+# QuizRush — Master Debug & Implementation Plan
+
+**Scope:** Full audit of `QuizRush-main.zip` against the product/UX/engineering brief you provided. No code was changed — this is the plan only.
+**Method:** Read every file in `src/`, `scripts/`, `docs/`. Cross-checked README/docs claims against actual implementation. Ran the **Decision Council** skill on sequencing, and the **emil-design-eng** skill on the interaction/animation layer.
+
+---
+
+## 0. The one-paragraph version
+
+QuizRush's backend (Valkey data modeling, scoring, TTL, streams) is genuinely solid for a hackathon project. The problems are concentrated in three places: **(1) the quiz answers are shipped to the browser in plain text**, so anyone can open devtools and see every correct answer before playing — this is the single most damaging bug because it undermines the entire premise of "competitive quiz." **(2) refreshing the page or guessing a room code breaks the experience** — no session rehydration, score resets to zero on rejoin, and three GET endpoints leak any room's full state/PDF/leaderboard to anyone who can guess a 4-character code. **(3) the emotional climax of the product — the moment the quiz ends and a winner is crowned — is the flattest screen in the app**, with a broken icon, no confetti, and no way to play again. Everything else (the 1,316-line monolith component, the dead `lucide-react` dependency, the 18 `transition-all`s, zero `:active` press states) is real but secondary.
+
+---
+
+## 1. Findings — Full Audit
+
+Each finding has: what it is, exact location, why it matters, and severity.
+
+### 🔴 P0 — Trust & Security (fix before anyone else plays this)
+
+| # | Finding | Where | Why it matters |
+|---|---|---|---|
+| 1 | **Correct answers are bundled into client JS.** `demoQuiz` (with `correctAnswer` and `explanation` for every question) is imported directly into the `"use client"` component and rendered from local data, not fetched per-question from the server. | `src/lib/de
+<truncated 32538 bytes>
+r existing score/streak hash fields alone.
+
+4. Wire the existing "Log Out" / exit button in quizrush-experience.tsx to
+   call POST /api/auth/logout before clearing local React state.
+
+5. Add a session + membership check to these three GET routes — require a
+   valid session AND that session.playerId is a member of
+   roomPlayersKey(roomCode) before returning data:
+   - src/app/api/rooms/[roomCode]/route.ts
+   - src/app/api/leaderboard/[roomCode]/route.ts
+   - src/app/api/export/pdf/[roomCode]/route.ts
+
+6. src/server/auth/session.ts getSecret(): throw an error at startup if
+   process.env.NODE_ENV === "production" and SESSION_SECRET is unset,
+   instead of silently falling back to the hardcoded dev string.
+
+Run `npm run typecheck` and `npm run test` after each change. Keep changes
+minimal and scoped — this PR is security/integrity only.
+```
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-06-20T22:19:36+05:30.
+
+The user's current state is as follows:
+Active Document: f:\projects\QuizRush\Design.md (LANGUAGE_MARKDOWN)
+Cursor is on line: 103
+Other open documents:
+- f:\projects\QuizRush\Design.md (LANGUAGE_MARKDOWN)
+- f:\projects\QuizRush\README.md (LANGUAGE_MARKDOWN)
+- f:\projects\QuizRush\docs\Prompt.md (LANGUAGE_MARKDOWN)
+- f:\projects\QuizRush\src\app\globals.css (LANGUAGE_CSS)
+
+The user has mentioned some items in the form @[ITEM]. Here is extra information about the items that were mentioned by the user, in the order that they appear:
+
+/brainstorming is a [Slash Command]:
+<SKILL>The user requested you read and use the "brainstorming" skill. The path to the skill file is:
+C:\Users\Shaik Irfan\.gemini\config\skills\brainstorming\SKILL.md</SKILL>
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from Gemini 3.5 Flash (High) to Gemini 3.1 Pro (High). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>

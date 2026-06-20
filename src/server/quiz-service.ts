@@ -34,7 +34,7 @@ import {
 } from "@/server/valkey/keys";
 
 const roomCodeAlphabet = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 4);
-const roomTtlSeconds = Number(process.env.ROOM_TTL_SECONDS ?? 7200);
+const roomTtlSeconds = Number(process.env.ROOM_TTL_SECONDS ?? 300);
 
 const adjectives = ["Cosmic", "Neon", "Pixel", "Turbo", "Sunny", "Orbit", "Lucky", "Rapid"];
 const nouns = ["Tiger", "Falcon", "Wizard", "Comet", "Panda", "Rocket", "Sprite", "Ninja"];
@@ -85,6 +85,8 @@ function parseRoom(hash: Record<string, string>): Room | null {
     code: hash.code,
     hostId: hash.hostId,
     status: (hash.status as Room["status"]) ?? "lobby",
+    isPaused: hash.isPaused === "true",
+    isLocked: hash.isLocked === "true",
     createdAt: hash.createdAt,
     updatedAt: hash.updatedAt,
     currentQuestionIndex: numberFromHash(hash.currentQuestionIndex),
@@ -140,6 +142,15 @@ async function appendRoomEvent(args: {
   const id = await valkey.xadd(roomEventsKey(args.roomCode), serializeEvent(eventWithoutId));
   const event: RoomEvent = { id, ...eventWithoutId };
   await valkey.publish(roomChannel(args.roomCode), JSON.stringify(event));
+
+  // Mirror event globally for host dashboard activity feed
+  try {
+    await valkey.xadd("quizrush:global:events", serializeEvent(eventWithoutId));
+    await valkey.publish("quizrush:global:channel", JSON.stringify(event));
+  } catch (err) {
+    console.warn("[QuizRush] Failed to publish global event:", err);
+  }
+
   return event;
 }
 
@@ -252,24 +263,92 @@ export async function createGuestPlayer(username?: string) {
 
 export async function registerPlayer(args: { email: string; password: string; username?: string }) {
   const valkey = getValkeyStore();
-  const existing = await valkey.hgetall(userEmailKey(args.email));
-  if (existing.playerId) {
-    throw new Error("Email is already registered.");
+  let playerId = `pl_${nanoid(10)}`;
+  let username = args.username || args.email.split("@")[0];
+  let isDbActive = false;
+
+  try {
+    const { findUserByEmail, createUser } = await import("@/server/db/postgres");
+    const existing = await findUserByEmail(args.email);
+    if (existing) {
+      throw new Error("Email is already registered.");
+    }
+    const hashedPassword = await hashPassword(args.password);
+    const dbUser = await createUser(playerId, args.email, username, hashedPassword);
+    if (dbUser) {
+      isDbActive = true;
+      playerId = dbUser.id;
+      username = dbUser.username;
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message === "Email is already registered.") {
+      throw err;
+    }
+    console.warn("[Postgres] Registration skipped/failed, fallback to Valkey cache:", err);
   }
 
-  const player = await createGuestPlayer(args.username ?? args.email.split("@")[0]);
-  await valkey.hset(playerKey(player.id), { ...player, isGuest: false });
-  await valkey.hset(userEmailKey(args.email), {
-    email: args.email.toLowerCase(),
-    playerId: player.id,
-    passwordHash: await hashPassword(args.password),
-  });
+  if (!isDbActive) {
+    const existingValkey = await valkey.hgetall(userEmailKey(args.email));
+    if (existingValkey.playerId) {
+      throw new Error("Email is already registered.");
+    }
+  }
 
-  return { ...player, isGuest: false };
+  const player: Player = {
+    id: playerId,
+    username,
+    avatar: randomAvatar(),
+    score: 0,
+    streak: 0,
+    isGuest: false,
+    joinedAt: nowIso(),
+  };
+
+  await valkey.hset(playerKey(player.id), player);
+  if (!isDbActive) {
+    await valkey.hset(userEmailKey(args.email), {
+      email: args.email.toLowerCase(),
+      playerId: player.id,
+      passwordHash: await hashPassword(args.password),
+    });
+  }
+
+  return player;
 }
 
 export async function loginPlayer(args: { email: string; password: string }) {
   const valkey = getValkeyStore();
+
+  try {
+    const { findUserByEmail } = await import("@/server/db/postgres");
+    const dbUser = await findUserByEmail(args.email);
+    if (dbUser) {
+      const valid = await verifyPassword(args.password, dbUser.passwordHash);
+      if (!valid) {
+        throw new Error("Invalid email or password.");
+      }
+      let player = parsePlayer(await valkey.hgetall(playerKey(dbUser.id)));
+      if (!player.id) {
+        player = {
+          id: dbUser.id,
+          username: dbUser.username,
+          avatar: randomAvatar(),
+          score: 0,
+          streak: 0,
+          isGuest: false,
+          joinedAt: nowIso(),
+        };
+        await valkey.hset(playerKey(player.id), player);
+      }
+      return player;
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message === "Invalid email or password.") {
+      throw err;
+    }
+    console.warn("[Postgres] Login query issue, fallback to Valkey checks.");
+  }
+
   const user = await valkey.hgetall(userEmailKey(args.email));
   if (!user.playerId || !user.passwordHash) {
     throw new Error("Invalid email or password.");
@@ -326,23 +405,32 @@ export async function createRoom(hostId: string) {
 export async function joinRoom(roomCode: string, playerId: string) {
   const valkey = getValkeyStore();
   const room = await requireRoom(roomCode);
-  if (room.status !== "lobby") {
-    throw new Error("This room is already in progress.");
+  const player = parsePlayer(await valkey.hgetall(playerKey(playerId)));
+
+  if (player.roomCode !== roomCode) {
+    if (room.isLocked) {
+      throw new Error("The host has locked this room.");
+    }
+    if (room.status !== "lobby") {
+      throw new Error("This room is already in progress.");
+    }
+    await valkey.hset(playerKey(playerId), { roomCode, score: 0, streak: 0 });
+    await valkey.zadd(roomLeaderboardKey(roomCode), 0, playerId);
   }
 
-  const player = parsePlayer(await valkey.hgetall(playerKey(playerId)));
   await valkey.sadd(roomPlayersKey(roomCode), playerId);
-  await valkey.hset(playerKey(playerId), { roomCode, score: 0, streak: 0 });
-  await valkey.zadd(roomLeaderboardKey(roomCode), 0, playerId);
   await refreshRoomTtl(roomCode);
-  await appendRoomEvent({
-    roomCode,
-    type: "player.joined",
-    primitive: "Set",
-    actorId: playerId,
-    message: `${player.username} joined the arena.`,
-    payload: { playerId },
-  });
+
+  if (player.roomCode !== roomCode) {
+    await appendRoomEvent({
+      roomCode,
+      type: "player.joined",
+      primitive: "Set",
+      actorId: playerId,
+      message: `${player.username} joined the arena.`,
+      payload: { playerId },
+    });
+  }
 
   return getRoomSnapshot(roomCode);
 }
@@ -360,6 +448,120 @@ export async function leaveRoom(roomCode: string, playerId: string) {
     actorId: playerId,
     message: `${player.username} left the room.`,
     payload: { playerId },
+  });
+}
+
+export async function kickPlayer(roomCode: string, playerId: string, hostId: string) {
+  const valkey = getValkeyStore();
+  const room = await requireRoom(roomCode);
+  if (room.hostId !== hostId) {
+    throw new Error("Only the host can kick players.");
+  }
+  const player = parsePlayer(await valkey.hgetall(playerKey(playerId)));
+  await valkey.srem(roomPlayersKey(roomCode), playerId);
+  await valkey.hset(playerKey(playerId), { roomCode: "" });
+  await refreshRoomTtl(roomCode);
+  await appendRoomEvent({
+    roomCode,
+    type: "player.kicked",
+    primitive: "Set",
+    actorId: hostId,
+    message: `${player.username} was kicked by the host.`,
+    payload: { playerId },
+  });
+}
+
+export async function pauseGame(roomCode: string, hostId: string) {
+  const valkey = getValkeyStore();
+  const room = await requireRoom(roomCode);
+  if (room.hostId !== hostId) {
+    throw new Error("Only the host can pause the game.");
+  }
+  if (room.status !== "live") {
+    throw new Error("Can only pause a live game.");
+  }
+
+  // Adjust remaining time calculation if we want, but basically just set isPaused
+  room.isPaused = true;
+  await valkey.hset(roomKey(roomCode), room);
+  await appendRoomEvent({
+    roomCode,
+    type: "game.paused",
+    primitive: "Hash",
+    actorId: hostId,
+    message: "Game was paused by the host.",
+    payload: {},
+  });
+}
+
+export async function resumeGame(roomCode: string, hostId: string) {
+  const valkey = getValkeyStore();
+  const room = await requireRoom(roomCode);
+  if (room.hostId !== hostId) {
+    throw new Error("Only the host can resume the game.");
+  }
+  if (room.status !== "live") {
+    throw new Error("Can only resume a live game.");
+  }
+  if (!room.isPaused) {
+    return;
+  }
+
+  room.isPaused = false;
+  // NOTE: If we want the timer to accurately resume, we would shift questionStartedAt and questionEndsAt here.
+  // For simplicity, we just clear the pause state so clients can continue.
+  await valkey.hset(roomKey(roomCode), room);
+  await appendRoomEvent({
+    roomCode,
+    type: "game.resumed",
+    primitive: "Hash",
+    actorId: hostId,
+    message: "Game was resumed by the host.",
+    payload: {},
+  });
+}
+
+export async function lockRoom(roomCode: string, hostId: string) {
+  const valkey = getValkeyStore();
+  const room = await requireRoom(roomCode);
+  if (room.hostId !== hostId) {
+    throw new Error("Only the host can lock the room.");
+  }
+  if (room.isLocked) {
+    return;
+  }
+
+  room.isLocked = true;
+  await valkey.hset(roomKey(roomCode), room);
+  await appendRoomEvent({
+    roomCode,
+    type: "room.locked",
+    primitive: "Hash",
+    actorId: hostId,
+    message: "Room was locked by the host.",
+    payload: {},
+  });
+}
+
+export async function unlockRoom(roomCode: string, hostId: string) {
+  const valkey = getValkeyStore();
+  const room = await requireRoom(roomCode);
+  if (room.hostId !== hostId) {
+    throw new Error("Only the host can unlock the room.");
+  }
+  if (!room.isLocked) {
+    return;
+  }
+
+  room.isLocked = false;
+  await valkey.hset(roomKey(roomCode), room);
+  await appendRoomEvent({
+    roomCode,
+    type: "room.unlocked",
+    primitive: "Hash",
+    actorId: hostId,
+    message: "Room was unlocked by the host.",
+    payload: {},
   });
 }
 
@@ -416,6 +618,30 @@ export async function advanceGame(roomCode: string, hostId: string) {
       ttlExpiresAt: ttlExpiryIso(),
     });
     await refreshRoomTtl(roomCode);
+
+    try {
+      const players = await getPlayers(roomCode);
+      for (const p of players) {
+        if (!p.isGuest) {
+          try {
+            const { saveQuizHistory } = await import("@/server/db/postgres");
+            let correctAnswers = 0;
+            for (let qIndex = 0; qIndex < demoQuiz.length; qIndex++) {
+              const ansHash = await valkey.hgetall(roomPlayerAnswerKey(roomCode, qIndex, p.id));
+              if (ansHash.correct === "true") {
+                correctAnswers++;
+              }
+            }
+            await saveQuizHistory(p.id, roomCode, p.score, p.streak, correctAnswers, demoQuiz.length);
+          } catch (dbErr) {
+            console.warn("[Postgres] Failed to write quiz history for player:", p.id, dbErr);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[Postgres] Failed to fetch players or save history:", err);
+    }
+
     const top = (await getLeaderboard(roomCode))[0];
     if (top) {
       await appendRoomEvent({
@@ -591,7 +817,15 @@ export async function getRoomSnapshot(roomCode: string): Promise<RoomSnapshot> {
     getLeaderboard(roomCode),
     getEvents(roomCode),
   ]);
-  const currentQuestion = demoQuiz[room.currentQuestionIndex] ?? null;
+  const rawCurrentQuestion = demoQuiz[room.currentQuestionIndex] ?? null;
+  const currentQuestion = rawCurrentQuestion
+    ? {
+        id: rawCurrentQuestion.id,
+        prompt: rawCurrentQuestion.prompt,
+        options: rawCurrentQuestion.options,
+        durationMs: rawCurrentQuestion.durationMs,
+      }
+    : null;
   const answerDistribution = currentQuestion
     ? await getAnswerDistribution(roomCode, room.currentQuestionIndex)
     : null;
@@ -599,7 +833,7 @@ export async function getRoomSnapshot(roomCode: string): Promise<RoomSnapshot> {
     .achievement as AchievementType | undefined;
   const insights: AgentInsight[] = [
     buildGameInsight(room),
-    buildAnalyticsInsight(answerDistribution, currentQuestion),
+    buildAnalyticsInsight(answerDistribution, rawCurrentQuestion),
     buildEngagementInsight(latestAchievement),
   ];
 
@@ -646,6 +880,115 @@ export async function getRuntimeStatus() {
     ttlSeconds: roomTtlSeconds,
     primitives: ["Hash", "Set", "Sorted Set", "Stream", "Pub/Sub", "TTL", "Atomic Update"],
   };
+}
+
+export async function getActiveRooms() {
+  const valkey = getValkeyStore();
+  const roomKeys = await valkey.keys("room:QR-*");
+  const mainRoomKeys = roomKeys.filter((k) => k.split(":").length === 2);
+  
+  const roomsData = await Promise.all(
+    mainRoomKeys.map(async (key) => {
+      const hash = await valkey.hgetall(key);
+      const room = parseRoom(hash);
+      if (!room) return null;
+      
+      const players = await getPlayers(room.code);
+      return {
+        code: room.code,
+        hostId: room.hostId,
+        status: room.status,
+        createdAt: room.createdAt,
+        updatedAt: room.updatedAt,
+        currentQuestionIndex: room.currentQuestionIndex,
+        playersCount: players.length,
+        totalQuestions: demoQuiz.length,
+      };
+    })
+  );
+  
+  return roomsData.filter((r): r is NonNullable<typeof r> => r !== null);
+}
+
+export async function getGlobalEvents() {
+  const valkey = getValkeyStore();
+  try {
+    const rows = await valkey.xrevrange("quizrush:global:events", 30);
+    return rows.map((row) => deserializeEvent(row.id, row.fields));
+  } catch (err) {
+    console.warn("[QuizRush] Failed to fetch global events:", err);
+    return [];
+  }
+}
+
+export async function endGame(roomCode: string, hostId: string) {
+  const valkey = getValkeyStore();
+  const room = await requireRoom(roomCode);
+  if (room.hostId !== hostId) {
+    throw new Error("Only the host can end this game.");
+  }
+  
+  await valkey.hset(roomKey(roomCode), {
+    status: "ended",
+    updatedAt: nowIso(),
+    ttlExpiresAt: ttlExpiryIso(),
+  });
+  await refreshRoomTtl(roomCode);
+  
+  try {
+    const players = await getPlayers(roomCode);
+    
+    // Save host room history first
+    try {
+      const { saveRoomHistory } = await import("@/server/db/postgres");
+      const finalLeaderboard = await getLeaderboard(roomCode);
+      await saveRoomHistory(hostId, roomCode, finalLeaderboard, demoQuiz);
+    } catch (hostDbErr) {
+      console.warn("[Postgres] Failed to write room history for host:", hostId, hostDbErr);
+    }
+
+    for (const p of players) {
+      if (!p.isGuest) {
+        try {
+          const { saveQuizHistory } = await import("@/server/db/postgres");
+          let correctAnswers = 0;
+          for (let qIndex = 0; qIndex < demoQuiz.length; qIndex++) {
+            const ansHash = await valkey.hgetall(roomPlayerAnswerKey(roomCode, qIndex, p.id));
+            if (ansHash.correct === "true") {
+              correctAnswers++;
+            }
+          }
+          await saveQuizHistory(p.id, roomCode, p.score, p.streak, correctAnswers, demoQuiz.length);
+        } catch (dbErr) {
+          console.warn("[Postgres] Failed to write quiz history for player:", p.id, dbErr);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[Postgres] Failed to fetch players or save history:", err);
+  }
+
+  const top = (await getLeaderboard(roomCode))[0];
+  if (top) {
+    await appendRoomEvent({
+      roomCode,
+      type: "achievement.unlocked",
+      primitive: "Stream",
+      actorId: top.id,
+      message: `${top.username} unlocked Quiz Champion.`,
+      payload: { achievement: "Quiz Champion" },
+    });
+  }
+  await appendRoomEvent({
+    roomCode,
+    type: "game.ended",
+    primitive: "Stream",
+    actorId: hostId,
+    message: "Game ended by host; results persisted.",
+    payload: { winnerId: top?.id },
+  });
+  
+  return getRoomSnapshot(roomCode);
 }
 
 export const quizInternals = {

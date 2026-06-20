@@ -10,10 +10,14 @@ export interface SessionUser {
   isGuest: boolean;
 }
 
-function getSecret() {
-  const secret =
-    process.env.SESSION_SECRET ??
-    "quizrush-local-development-secret-change-before-production";
+function getSecret(): Uint8Array {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("SESSION_SECRET environment variable is required in production.");
+    }
+    return new TextEncoder().encode("dev_secret_key_12345");
+  }
   return new TextEncoder().encode(secret);
 }
 
@@ -36,6 +40,19 @@ export async function verifySession(token?: string): Promise<SessionUser | null>
       return null;
     }
 
+    try {
+      const { getSessionUserId } = await import("@/server/db/postgres");
+      const dbUserId = await getSessionUserId(token);
+      if (dbUserId === null) {
+        return null;
+      }
+      if (dbUserId !== undefined && dbUserId !== String(payload.playerId)) {
+        return null;
+      }
+    } catch (err) {
+      console.warn("[Postgres] Offline. Validating session via JWT fallback.");
+    }
+
     return {
       playerId: String(payload.playerId),
       username: String(payload.username),
@@ -48,7 +65,17 @@ export async function verifySession(token?: string): Promise<SessionUser | null>
 }
 
 export async function attachSessionCookie(response: NextResponse, session: SessionUser) {
-  response.cookies.set(sessionCookieName, await signSession(session), {
+  const token = await signSession(session);
+  const expiresAt = new Date(Date.now() + 60 * 60 * 24 * 7 * 1000); // 7 days
+
+  try {
+    const { createSession } = await import("@/server/db/postgres");
+    await createSession(token, session.playerId, expiresAt);
+  } catch (err) {
+    console.warn("[Postgres] Failed to write session to DB:", err);
+  }
+
+  response.cookies.set(sessionCookieName, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -57,7 +84,13 @@ export async function attachSessionCookie(response: NextResponse, session: Sessi
   });
 }
 
-export function clearSessionCookie(response: NextResponse) {
+export function clearSessionCookie(response: NextResponse, token?: string) {
+  if (token) {
+    import("@/server/db/postgres").then(({ deleteSession }) => {
+      deleteSession(token).catch(() => undefined);
+    }).catch(() => undefined);
+  }
+
   response.cookies.set(sessionCookieName, "", {
     httpOnly: true,
     sameSite: "lax",
