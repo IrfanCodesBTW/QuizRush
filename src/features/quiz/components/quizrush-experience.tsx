@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -98,17 +99,15 @@ export function QuizRushExperience() {
     }
   }, []);
 
-  // Handle back gesture / history popstate
+  // Handle back button / history state
   useEffect(() => {
-    const handlePopState = async () => {
-      if (snapshot) {
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state?.tab) {
+        setActiveTab(e.state.tab);
+      } else if (snapshot) {
         setSnapshot(null);
         setRoomInput("");
-      } else if (player) {
-        try {
-          await fetch("/api/auth/logout", { method: "POST" });
-        } catch (e) {}
-        setPlayer(null);
+        setActiveTab("play");
       }
     };
     window.addEventListener("popstate", handlePopState);
@@ -124,9 +123,14 @@ export function QuizRushExperience() {
 
   useEffect(() => {
     if (!player || snapshot) return;
-    fetchActiveRooms();
+    const timeout = setTimeout(() => {
+      void fetchActiveRooms();
+    }, 0);
     const interval = window.setInterval(fetchActiveRooms, 2000);
-    return () => window.clearInterval(interval);
+    return () => {
+      clearTimeout(timeout);
+      window.clearInterval(interval);
+    };
   }, [player, snapshot, fetchActiveRooms]);
 
   useEffect(() => {
@@ -156,12 +160,17 @@ export function QuizRushExperience() {
     if (!player) {
       return null;
     }
-    return snapshot?.players.find((item) => item.id === player.id) ?? player;
+    const id = player.id || player.playerId;
+    const roomPlayer = snapshot?.players.find((item) => item.id === id);
+    return {
+      ...(roomPlayer ?? player),
+      id,
+    };
   }, [player, snapshot]);
 
   const isHost = Boolean(snapshot && currentPlayer?.id === snapshot.room.hostId);
   const currentQuestion = snapshot?.currentQuestion ?? null;
-  const roomCode = snapshot?.room.code;
+  const roomCode = useMemo(() => snapshot?.room.code, [snapshot?.room.code, snapshot?.room.currentQuestionIndex]);
   const questionStartedAt = currentQuestion && snapshot?.room.questionStartedAt
     ? new Date(snapshot.room.questionStartedAt).getTime()
     : null;
@@ -504,27 +513,37 @@ export function QuizRushExperience() {
       <div className="fixed top-0 left-0 w-full z-50 p-2 md:p-4 flex justify-center pointer-events-none">
         <nav className="pointer-events-auto flex items-center justify-between lg:justify-start gap-2 md:gap-4 bg-white border-4 border-black rounded-[40px] px-4 md:px-6 py-3 flex-wrap brutalist-shadow w-[95%] max-w-5xl min-h-[64px] transition-all">
           {/* Logo */}
-          <a
+          <Link
             href="/"
+            onClick={(e) => {
+              if (snapshot) {
+                e.preventDefault();
+                setSnapshot(null);
+                setRoomInput("");
+                setActiveTab("play");
+              }
+            }}
             className="font-heading-md text-[20px] md:text-[28px] text-rocket-orange uppercase tracking-tighter mr-4 md:mr-6 cursor-pointer hover:opacity-80 transition-[opacity,transform] duration-150 active:scale-95 flex-shrink-0 bg-transparent border-none outline-none focus-visible:outline-2 focus-visible:outline-black no-underline"
           >
             <span className="mr-2">Quiz</span><span>Rush</span>
-          </a>
-
+          </Link>
+ 
           {/* Live Notification Banner */}
-          <div className="hidden md:flex items-center gap-2 bg-white border-2 border-black rounded-full px-4 py-1.5 shadow-[2px_2px_0px_#000] mr-auto">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-red opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-error-red"></span>
-            </span>
-            <span className="font-label-bold text-[12px] text-error-red uppercase tracking-wider font-black">
-              {activeRooms.length} Live Room{activeRooms.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-
+          {!snapshot && (
+            <div className="hidden md:flex items-center gap-2 bg-white border-2 border-black rounded-full px-4 py-1.5 shadow-[2px_2px_0px_#000] mr-auto">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-red opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-error-red"></span>
+              </span>
+              <span className="font-label-bold text-[12px] text-error-red uppercase tracking-wider font-black">
+                {activeRooms.length} Live Room{activeRooms.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
+ 
           {/* Desktop Tabs */}
           {currentPlayer && snapshot && (
-            <div className="hidden lg:flex items-center gap-1 flex-shrink-0">
+            <div className="hidden lg:flex items-center gap-1 flex-shrink-0 mr-auto">
               {tabs.map((t) => {
                 const isActive = activeTab === t.id;
                 return (
@@ -635,7 +654,7 @@ export function QuizRushExperience() {
             </AnimatePresence>
 
             {/* Mobile Bottom Navigation Bar */}
-            <nav className="lg:hidden fixed bottom-0 left-0 w-full bg-white border-t-4 border-black shadow-[0px_-4px_0px_#000] z-50 flex justify-around items-center py-2 pb-safe">
+            <nav className="lg:hidden fixed bottom-4 left-4 right-4 bg-white border-4 border-black rounded-[32px] shadow-[4px_4px_0px_#000] z-50 flex justify-around items-center py-2 pb-safe">
               {tabs.map((t) => {
                 const isActive = activeTab === t.id;
                 return (

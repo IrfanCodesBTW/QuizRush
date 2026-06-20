@@ -41,13 +41,15 @@ export async function verifySession(token?: string): Promise<SessionUser | null>
     }
 
     try {
-      const { getSessionUserId } = await import("@/server/db/postgres");
-      const dbUserId = await getSessionUserId(token);
-      if (dbUserId === null) {
-        return null;
-      }
-      if (dbUserId !== undefined && dbUserId !== String(payload.playerId)) {
-        return null;
+      if (!payload.isGuest) {
+        const { getSessionUserId } = await import("@/server/db/postgres");
+        const dbUserId = await getSessionUserId(token);
+        if (dbUserId === null) {
+          return null;
+        }
+        if (dbUserId !== undefined && dbUserId !== String(payload.playerId)) {
+          return null;
+        }
       }
     } catch (err) {
       console.warn("[Postgres] Offline. Validating session via JWT fallback.");
@@ -68,11 +70,13 @@ export async function attachSessionCookie(response: NextResponse, session: Sessi
   const token = await signSession(session);
   const expiresAt = new Date(Date.now() + 60 * 60 * 24 * 7 * 1000); // 7 days
 
-  try {
-    const { createSession } = await import("@/server/db/postgres");
-    await createSession(token, session.playerId, expiresAt);
-  } catch (err) {
-    console.warn("[Postgres] Failed to write session to DB:", err);
+  if (!session.isGuest) {
+    try {
+      const { createSession } = await import("@/server/db/postgres");
+      await createSession(token, session.playerId, expiresAt);
+    } catch (err) {
+      console.warn("[Postgres] Failed to write session to DB:", err);
+    }
   }
 
   response.cookies.set(sessionCookieName, token, {

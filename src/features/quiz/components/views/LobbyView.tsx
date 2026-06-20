@@ -558,7 +558,7 @@ export function LobbyView(props: LobbyViewProps) {
                 </div>
               ) : (
                 <p className="font-body-md text-body-md text-on-surface-variant text-center py-8 bg-surface-container border-2 border-dashed border-black/10 rounded-xl">
-                  You haven't hosted any rooms yet. Create a quiz to get started!
+                  You haven&apos;t hosted any rooms yet. Create a quiz to get started!
                 </p>
               )
             )}

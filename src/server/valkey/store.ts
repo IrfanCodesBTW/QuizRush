@@ -279,7 +279,7 @@ const globalForValkey = globalThis as typeof globalThis & {
 };
 
 export function getValkeyStore(): ValkeyStore {
-  if (globalForValkey.quizRushValkey) {
+  if (globalForValkey.quizRushValkey && typeof globalForValkey.quizRushValkey.keys === "function") {
     return globalForValkey.quizRushValkey;
   }
 
