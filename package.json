@@ -1,0 +1,60 @@
+{
+  "name": "quizrush",
+  "version": "0.1.0",
+  "private": true,
+  "description": "QuizRush - Valkey-powered real-time multiplayer quiz arena.",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "dev:socket": "tsx scripts/realtime-server.ts",
+    "dev:all": "concurrently \"npm:dev\" \"npm:dev:socket\"",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "valkey",
+    "quiz",
+    "realtime",
+    "nextjs"
+  ],
+  "author": "Shaik Irfan Basha",
+  "license": "MIT",
+  "dependencies": {
+    "@react-pdf/renderer": "^4.3.1",
+    "bcryptjs": "^3.0.3",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "framer-motion": "^12.23.26",
+    "ioredis": "^5.8.2",
+    "jose": "^6.1.3",
+    "lucide-react": "^0.561.0",
+    "nanoid": "^5.1.6",
+    "next": "^15.5.9",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "recharts": "^3.6.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "tailwind-merge": "^3.4.0",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/node": "^25.0.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.4.23",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.2",
+    "eslint-config-next": "^16.0.10",
+    "postcss": "^8.5.6",
+    "prettier": "^3.7.4",
+    "tailwindcss": "^4.3.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  }
+}
