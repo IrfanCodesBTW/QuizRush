@@ -7,6 +7,7 @@ import type {
   AnswerOption,
   LeaderboardEntry,
   Player,
+  PlayerAnswer,
   Room,
   RoomEvent,
   RoomEventType,
@@ -602,6 +603,30 @@ export async function getRoomSnapshot(roomCode: string): Promise<RoomSnapshot> {
     buildEngagementInsight(latestAchievement),
   ];
 
+  const valkey = getValkeyStore();
+  const playerAnswers: Record<string, PlayerAnswer[]> = {};
+
+  await Promise.all(
+    players.map(async (p) => {
+      const answers = await Promise.all(
+        demoQuiz.map(async (question, questionIndex) => {
+          const ansHash = await valkey.hgetall(roomPlayerAnswerKey(roomCode, questionIndex, p.id));
+          if (!ansHash.playerId) return null;
+          return {
+            playerId: ansHash.playerId,
+            questionId: ansHash.questionId,
+            selectedOption: ansHash.selectedOption as AnswerOption,
+            responseTimeMs: numberFromHash(ansHash.responseTimeMs),
+            correct: ansHash.correct === "true",
+            scoreAwarded: numberFromHash(ansHash.scoreAwarded),
+            answeredAt: ansHash.answeredAt,
+          } satisfies PlayerAnswer;
+        })
+      );
+      playerAnswers[p.id] = answers.filter((a): a is PlayerAnswer => a !== null);
+    })
+  );
+
   return {
     room,
     players,
@@ -611,6 +636,7 @@ export async function getRoomSnapshot(roomCode: string): Promise<RoomSnapshot> {
     answerDistribution,
     insights,
     serverNow: nowIso(),
+    playerAnswers,
   };
 }
 

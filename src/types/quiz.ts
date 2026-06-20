@@ -96,6 +96,16 @@ export interface AgentInsight {
   message: string;
 }
 
+export interface PlayerAnswer {
+  playerId: string;
+  questionId: string;
+  selectedOption: AnswerOption;
+  responseTimeMs: number;
+  correct: boolean;
+  scoreAwarded: number;
+  answeredAt: string;
+}
+
 export interface RoomSnapshot {
   room: Room;
   players: Player[];
@@ -105,4 +115,6 @@ export interface RoomSnapshot {
   answerDistribution: AnswerDistribution | null;
   insights: AgentInsight[];
   serverNow: string;
+  playerAnswers?: Record<string, PlayerAnswer[]>;
 }
+
