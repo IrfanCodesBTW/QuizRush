@@ -34,7 +34,7 @@ import {
 } from "@/server/valkey/keys";
 
 const roomCodeAlphabet = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 4);
-const roomTtlSeconds = Number(process.env.ROOM_TTL_SECONDS ?? 300);
+const roomTtlSeconds = Number(process.env.ROOM_TTL_SECONDS ?? 7200);
 
 const adjectives = ["Cosmic", "Neon", "Pixel", "Turbo", "Sunny", "Orbit", "Lucky", "Rapid"];
 const nouns = ["Tiger", "Falcon", "Wizard", "Comet", "Panda", "Rocket", "Sprite", "Ninja"];
@@ -71,6 +71,7 @@ function parsePlayer(hash: Record<string, string>): Player {
     score: numberFromHash(hash.score),
     streak: numberFromHash(hash.streak),
     isGuest: hash.isGuest === "true",
+    isSpectator: hash.isSpectator === "true",
     joinedAt: hash.joinedAt,
     roomCode: hash.roomCode,
   };
@@ -411,24 +412,31 @@ export async function joinRoom(roomCode: string, playerId: string) {
     if (room.isLocked) {
       throw new Error("The host has locked this room.");
     }
-    if (room.status !== "lobby") {
+    const isSpectatorJoin = room.status === "live" || room.status === "reveal";
+    if (room.status !== "lobby" && !isSpectatorJoin) {
       throw new Error("This room is already in progress.");
     }
-    await valkey.hset(playerKey(playerId), { roomCode, score: 0, streak: 0 });
-    await valkey.zadd(roomLeaderboardKey(roomCode), 0, playerId);
+
+    if (isSpectatorJoin) {
+      await valkey.hset(playerKey(playerId), { roomCode, score: 0, streak: 0, isSpectator: "true" });
+    } else {
+      await valkey.hset(playerKey(playerId), { roomCode, score: 0, streak: 0 });
+      await valkey.zadd(roomLeaderboardKey(roomCode), 0, playerId);
+    }
   }
 
   await valkey.sadd(roomPlayersKey(roomCode), playerId);
   await refreshRoomTtl(roomCode);
 
   if (player.roomCode !== roomCode) {
+    const isSpectatorJoin = room.status === "live" || room.status === "reveal";
     await appendRoomEvent({
       roomCode,
       type: "player.joined",
       primitive: "Set",
       actorId: playerId,
       message: `${player.username} joined the arena.`,
-      payload: { playerId },
+      payload: { playerId, isSpectator: isSpectatorJoin },
     });
   }
 

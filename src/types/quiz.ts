@@ -53,6 +53,7 @@ export interface Player {
   score: number;
   streak: number;
   isGuest: boolean;
+  isSpectator?: boolean;
   joinedAt: string;
   roomCode?: string;
 }

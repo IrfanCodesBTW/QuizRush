@@ -1,7 +1,7 @@
 import pg from "pg";
 const { Pool } = pg;
 
-const connectionString = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/quizrush";
+const connectionString = process.env.DATABASE_URL || "postgresql://app_user:QuizRush2026!Secure@db.gocglbrxxbfdljyllkhm.supabase.co:6543/postgres";
 
 let pool: pg.Pool | null = null;
 let isConnected = false;

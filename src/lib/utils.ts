@@ -6,7 +6,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatRoomCode(value: string) {
-  return value.trim().toUpperCase().replace(/\s+/g, "");
+  const cleaned = value.trim().toUpperCase().replace(/\s+/g, "");
+  if (/^[0-9A-Z]{4}$/.test(cleaned)) {
+    return `QR-${cleaned}`;
+  }
+  return cleaned;
 }
 
 export function initials(name: string) {

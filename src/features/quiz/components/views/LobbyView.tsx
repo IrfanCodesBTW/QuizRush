@@ -107,8 +107,6 @@ export function LobbyView(props: LobbyViewProps) {
   const [activeHistoryTab, setActiveHistoryTab] = useState<"played" | "hosted">("played");
   const [selectedHistoryDetails, setSelectedHistoryDetails] = useState<any | null>(null);
 
-  const isHost = currentPlayer?.isGuest === false;
-
   const getTheme = (code: string) => getRoomTheme(code);
 
   const playedHistory = history && !Array.isArray(history) && history.played ? history.played : (Array.isArray(history) ? history : []);
@@ -232,10 +230,10 @@ export function LobbyView(props: LobbyViewProps) {
         <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="font-heading-lg text-[48px] sm:text-[60px] md:text-[72px] text-black uppercase leading-none drop-shadow-[3px_3px_0px_#FFD938]">
-              Host Dashboard
+              Quiz Lobby
             </h1>
             <p className="font-body-lg text-body-lg text-secondary mt-1">
-              Manage your live rooms, browse quiz templates, and monitor event feeds in real-time.
+              Create a room to host, or enter a code to join one already running.
             </p>
           </div>
         </div>
