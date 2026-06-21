@@ -290,7 +290,6 @@ export function getValkeyStore(): ValkeyStore {
     const redis = new Redis(url, {
       lazyConnect: true,
       maxRetriesPerRequest: 2,
-      enableOfflineQueue: false,
     });
 
     redis.on("error", (error) => {

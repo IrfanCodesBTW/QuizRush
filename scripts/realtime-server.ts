@@ -6,7 +6,7 @@ import { getDeploymentReadiness, validateProductionEnvironment } from "../src/se
 
 validateProductionEnvironment();
 
-const port = Number(process.env.SOCKET_PORT ?? 4001);
+const port = Number(process.env.PORT || process.env.SOCKET_PORT || 4001);
 const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 const valkey = getValkeyStore();
 
