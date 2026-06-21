@@ -11,14 +11,20 @@ export interface SessionUser {
   isGuest: boolean;
 }
 
-const sessionSecret = new TextEncoder().encode(getSessionSecret());
+let cachedSecret: Uint8Array | null = null;
+function getSecret(): Uint8Array {
+  if (!cachedSecret) {
+    cachedSecret = new TextEncoder().encode(getSessionSecret());
+  }
+  return cachedSecret;
+}
 
 export async function signSession(session: SessionUser) {
   return new SignJWT({ ...session })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(sessionSecret);
+    .sign(getSecret());
 }
 
 export async function verifySession(token?: string): Promise<SessionUser | null> {
@@ -27,7 +33,7 @@ export async function verifySession(token?: string): Promise<SessionUser | null>
   }
 
   try {
-    const { payload } = await jwtVerify(token, sessionSecret);
+    const { payload } = await jwtVerify(token, getSecret());
     if (!payload.playerId || !payload.username) {
       return null;
     }
