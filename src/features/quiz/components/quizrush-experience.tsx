@@ -298,6 +298,16 @@ export function QuizRushExperience() {
     }
   }
 
+  async function logout() {
+    await runAction("logout", async () => {
+      await postJson("/api/auth/logout");
+      setPlayer(null);
+      setSnapshot(null);
+      setRoomInput("");
+      return { ok: true };
+    });
+  }
+
   async function createRoom() {
     const result = await runAction("create-room", () =>
       postJson<{ snapshot: RoomSnapshot }>("/api/rooms/create"),
@@ -660,6 +670,16 @@ export function QuizRushExperience() {
                 <div className="font-label-bold text-label-bold text-on-surface border-2 border-black px-3.5 py-1.5 rounded-full shadow-[2px_2px_0px_#000] bg-white cursor-default hidden md:block uppercase flex-shrink-0" title={currentPlayer.username}>
                   {currentPlayer.username}
                 </div>
+
+                {/* Logout Button */}
+                <button
+                  onClick={logout}
+                  className="bg-error-container border-2 border-black rounded-full px-3.5 py-1.5 flex items-center justify-center gap-1 shadow-[2px_2px_0px_#000] hover:translate-y-[-2px] active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-transform cursor-pointer font-label-bold text-[11px] md:text-[13px] text-black uppercase active:scale-[0.97]"
+                  title="Logout"
+                >
+                  <span className="material-symbols-outlined text-[16px] md:text-[18px]">logout</span>
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
               </>
             ) : (
               /* Guest/Home state - show live DB modes */
