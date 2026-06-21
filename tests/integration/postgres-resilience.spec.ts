@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { execSync } from 'child_process';
 
 // Helpers
-async function register(page, email, password, username) {
+async function register(page: Page, email: string, password: string, username: string) {
   await page.goto('/');
   await page.click('button:has-text("Login / Register")');
   await page.click('button:has-text("Create Account")');
@@ -13,7 +14,7 @@ async function register(page, email, password, username) {
   await expect(page.locator('text=Quiz Lobby').first()).toBeVisible();
 }
 
-async function loginAsGuest(page, username) {
+async function loginAsGuest(page: Page, username: string) {
   await page.goto('/');
   await page.click('button:has-text("Play as Guest")');
   await page.fill('input[placeholder="Enter guest name"]', username);

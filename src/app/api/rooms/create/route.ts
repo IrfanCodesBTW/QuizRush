@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireCurrentSession } from "@/server/auth/current-session";
 import { createRoom } from "@/server/quiz-service";
+import { errorResponse } from "@/server/http/errors";
 
 export async function POST() {
   try {
@@ -8,9 +9,6 @@ export async function POST() {
     const snapshot = await createRoom(session.playerId);
     return NextResponse.json({ snapshot });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to create room." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Unable to create room.");
   }
 }

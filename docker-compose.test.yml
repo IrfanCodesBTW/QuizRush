@@ -25,11 +25,15 @@ services:
     build:
       context: .
       target: runner
+      args:
+        NEXT_PUBLIC_SOCKET_URL: http://socket:4001
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/quizrush
       VALKEY_URL: redis://valkey:6379
       SESSION_SECRET: test-only-secret-do-not-use-in-prod
       ROOM_TTL_SECONDS: 7200
+      NEXT_PUBLIC_APP_URL: http://app:3000
+      NEXT_PUBLIC_SOCKET_URL: http://socket:4001
       NODE_ENV: production
     depends_on:
       postgres:
@@ -44,6 +48,24 @@ services:
       timeout: 5s
       retries: 10
 
+  socket:
+    build:
+      context: .
+      target: tester
+    environment:
+      VALKEY_URL: redis://valkey:6379
+      SESSION_SECRET: test-only-secret-do-not-use-in-prod
+      NEXT_PUBLIC_APP_URL: http://app:3000
+      NEXT_PUBLIC_SOCKET_URL: http://socket:4001
+      SOCKET_PORT: 4001
+      NODE_ENV: production
+    command: npm run dev:socket
+    depends_on:
+      valkey:
+        condition: service_healthy
+    ports:
+      - "4001:4001"
+
   tests:
     build:
       context: .
@@ -53,6 +75,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/quizrush
       VALKEY_URL: redis://valkey:6379
       SESSION_SECRET: test-only-secret-do-not-use-in-prod
+      NEXT_PUBLIC_SOCKET_URL: http://socket:4001
     command: npm run test:all
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

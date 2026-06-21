@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 // Helper to register an account
-async function register(page, email, password, username) {
+async function register(page: Page, email: string, password: string, username: string) {
   await page.goto('/');
   await page.click('button:has-text("Login / Register")');
   await page.click('button:has-text("Create Account")');
@@ -12,7 +13,7 @@ async function register(page, email, password, username) {
   await expect(page.locator('text=Quiz Lobby').first()).toBeVisible();
 }
 
-async function loginAsGuest(page, username) {
+async function loginAsGuest(page: Page, username: string) {
   await page.goto('/');
   await page.click('button:has-text("Play as Guest")');
   await page.fill('input[placeholder="Enter guest name"]', username);
@@ -111,6 +112,23 @@ test.describe('Multiplayer Join Flow', () => {
     // Assert both see each other
     await expect(pageA.locator('text=RegJoiner').first()).toBeVisible();
     await expect(pageB.locator('text=GuestHost').first()).toBeVisible();
+
+    // Simulate a load-balancer node rejecting the cookie. The room must stay visible.
+    let rejectedRoomPoll = false;
+    const roomPollPattern = /\/api\/rooms\/QR-/;
+    await pageB.route(roomPollPattern, async (route) => {
+      if (!rejectedRoomPoll && route.request().method() === 'GET') {
+        rejectedRoomPoll = true;
+        await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'Session could not be verified.' }) });
+        return;
+      }
+      await route.continue();
+    });
+    await expect(pageB.getByTestId('session-recovery')).toBeVisible();
+    await expect(pageB.locator('text=Waiting for Host...').first()).toBeVisible();
+    await pageB.unroute(roomPollPattern);
+    await pageB.getByRole('button', { name: 'Retry' }).click();
+    await expect(pageB.getByTestId('session-recovery')).toBeHidden();
 
     // Wait 30 seconds
     await pageA.waitForTimeout(30000);

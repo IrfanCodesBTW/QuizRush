@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import Redis from "ioredis";
+import { getValkeyUrl } from "@/server/config/env";
 
 type HashValue = object;
 type StreamEntry = { id: string; fields: Record<string, string> };
@@ -283,7 +284,7 @@ export function getValkeyStore(): ValkeyStore {
     return globalForValkey.quizRushValkey;
   }
 
-  const url = process.env.VALKEY_URL;
+  const url = getValkeyUrl();
 
   if (url) {
     const redis = new Redis(url, {

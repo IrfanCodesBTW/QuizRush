@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getRoomSnapshot } from "@/server/quiz-service";
 
 import { requireCurrentSession } from "@/server/auth/current-session";
+import { errorResponse, ForbiddenError } from "@/server/http/errors";
 
 export async function GET(
   _request: Request,
@@ -14,14 +15,11 @@ export async function GET(
 
     const isMember = snapshot.players.some((p) => p.id === session.playerId);
     if (!isMember) {
-      throw new Error("Not authorized to view this room.");
+      throw new ForbiddenError("Not authorized to view this room.");
     }
 
     return NextResponse.json({ leaderboard: snapshot.leaderboard });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to load leaderboard." },
-      { status: 404 },
-    );
+    return errorResponse(error, "Unable to load leaderboard.");
   }
 }

@@ -3,6 +3,7 @@ import { renderResultsPdf } from "@/server/pdf/report";
 import { getRoomSnapshot } from "@/server/quiz-service";
 
 import { requireCurrentSession } from "@/server/auth/current-session";
+import { errorResponse, ForbiddenError } from "@/server/http/errors";
 
 export const runtime = "nodejs";
 
@@ -17,7 +18,7 @@ export async function GET(
 
     const isMember = snapshot.players.some((p) => p.id === session.playerId);
     if (!isMember) {
-      throw new Error("Not authorized to view this room.");
+      throw new ForbiddenError("Not authorized to view this room.");
     }
 
     const pdf = await renderResultsPdf(snapshot);
@@ -29,9 +30,6 @@ export async function GET(
       },
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to export PDF." },
-      { status: 404 },
-    );
+    return errorResponse(error, "Unable to export PDF.");
   }
 }

@@ -41,9 +41,30 @@ export type RuntimeStatus = {
   postgresMode?: "connected" | "fallback";
   ttlSeconds: number;
   primitives: ValkeyPrimitive[];
+  readiness: {
+    sessionSecretConfigured: boolean;
+    valkeyConfigured: boolean;
+    socketConfigured: boolean;
+    valkeyFingerprint: string;
+  };
 };
 
 export type AuthMode = "guest" | "login" | "register";
+
+class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
+async function responseJson<T>(response: Response): Promise<T> {
+  const data = (await response.json().catch(() => ({}))) as T & { error?: string };
+  if (!response.ok) {
+    throw new ApiRequestError(data.error ?? "Request failed.", response.status);
+  }
+  return data;
+}
 
 async function postJson<T>(url: string, body?: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -51,20 +72,12 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
-  const data = (await response.json()) as T & { error?: string };
-  if (!response.ok) {
-    throw new Error(data.error ?? "Request failed.");
-  }
-  return data;
+  return responseJson<T>(response);
 }
 
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url);
-  const data = (await response.json()) as T & { error?: string };
-  if (!response.ok) {
-    throw new Error(data.error ?? "Request failed.");
-  }
-  return data;
+  return responseJson<T>(response);
 }
 
 export function QuizRushExperience() {
@@ -80,6 +93,7 @@ export function QuizRushExperience() {
   const [answeredQuestionId, setAnsweredQuestionId] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sessionIssue, setSessionIssue] = useState<string | null>(null);
   const [socketState, setSocketState] = useState<"connected" | "fallback">("fallback");
   const [now, setNow] = useState(0);
 
@@ -187,9 +201,24 @@ export function QuizRushExperience() {
     try {
       const data = await getJson<{ snapshot: RoomSnapshot }>(`/api/rooms/${encodeURIComponent(code)}`);
       setSnapshot(data.snapshot);
+      setSessionIssue(null);
+      setError(null);
     } catch (err) {
-      setRoomInput("");
-      setSnapshot(null);
+      if (err instanceof ApiRequestError && err.status === 401) {
+        setSessionIssue("Your session could not be verified. The room is still here while you reconnect.");
+        return;
+      }
+      if (err instanceof ApiRequestError && err.status === 404) {
+        setError("This room has expired or ended.");
+        setSnapshot(null);
+        setRoomInput(code);
+        return;
+      }
+      setError(
+        err instanceof ApiRequestError && err.status === 403
+          ? err.message
+          : "Connection interrupted. Keeping your last game state while we retry.",
+      );
     }
   }, []);
 
@@ -258,6 +287,11 @@ export function QuizRushExperience() {
 
     if (result?.player) {
       setPlayer(result.player);
+      const retainedRoomCode = snapshot?.room.code ?? (sessionIssue ? roomInput : null);
+      setSessionIssue(null);
+      if (retainedRoomCode) {
+        void loadRoom(retainedRoomCode);
+      }
       getJson<{ history: any[] }>("/api/history")
         .then((hData) => setHistory(hData.history))
         .catch(() => {});
@@ -509,7 +543,11 @@ export function QuizRushExperience() {
   }, [myAnswers]);
 
   return (
-    <main className="min-h-screen pb-24 md:pb-8 pt-6 px-4 pattern-bg relative">
+    <main
+      className="min-h-screen pb-24 md:pb-8 pt-6 px-4 pattern-bg relative"
+      data-testid="quizrush-app"
+      data-socket-state={displayedSocketState}
+    >
       {/* Floating Top Navigation (visible globally) */}
       <div className="fixed top-0 left-0 w-full z-50 p-2 md:p-4 flex justify-center pointer-events-none">
         <nav className="pointer-events-auto flex items-center justify-between lg:justify-start gap-2 md:gap-4 bg-white border-4 border-black rounded-[40px] px-4 md:px-6 py-3 flex-wrap brutalist-shadow w-[95%] max-w-5xl min-h-[64px] transition-all">
@@ -584,6 +622,20 @@ export function QuizRushExperience() {
               <>
                 {snapshot ? (
                   <>
+                    <div
+                      data-testid="socket-status"
+                      data-state={displayedSocketState}
+                      className={cn(
+                        "hidden sm:flex items-center gap-1.5 rounded-full border-2 border-black px-2.5 py-1 text-[11px] font-black uppercase shadow-[2px_2px_0px_#000]",
+                        displayedSocketState === "connected" ? "bg-success-green" : "bg-emoji-yellow",
+                      )}
+                    >
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className={cn("absolute inline-flex h-full w-full rounded-full opacity-70", displayedSocketState === "connected" && "animate-ping bg-black")} />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-black" />
+                      </span>
+                      {displayedSocketState === "connected" ? "Live" : "Syncing"}
+                    </div>
                     {/* Score Coin */}
                     <div className="bg-emoji-yellow border-2 border-black rounded-full px-2.5 py-1 flex items-center justify-center gap-1 shadow-[2px_2px_0px_#000] hover:translate-y-[-2px] active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-transform">
                       <span className="material-symbols-outlined fill-icon text-[16px] md:text-[18px]">monetization_on</span>
@@ -628,6 +680,52 @@ export function QuizRushExperience() {
 
       {/* Main Container */}
       <div className="mx-auto max-w-5xl flex flex-col gap-6 pt-20 md:pt-24">
+        <AnimatePresence>
+          {sessionIssue && snapshot && (
+            <motion.section
+              data-testid="session-recovery"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="rounded-poster border-4 border-black bg-emoji-yellow p-4 brutalist-shadow"
+              role="alert"
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-heading-md text-xl uppercase text-black">Session check failed</p>
+                  <p className="mt-1 text-sm font-bold text-black">{sessionIssue}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadRoom(snapshot.room.code)}
+                    className="rounded-full border-2 border-black bg-white px-4 py-2 text-xs font-black uppercase shadow-[2px_2px_0px_#000] active:translate-y-0 active:shadow-none"
+                  >
+                    Retry
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPlayer(null)}
+                    className="rounded-full border-2 border-black bg-primary-container px-4 py-2 text-xs font-black uppercase shadow-[2px_2px_0px_#000] active:translate-y-0 active:shadow-none"
+                  >
+                    Sign in again
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSessionIssue(null);
+                      setSnapshot(null);
+                      setActiveTab("play");
+                    }}
+                    className="rounded-full border-2 border-black bg-error-container px-4 py-2 text-xs font-black uppercase shadow-[2px_2px_0px_#000] active:translate-y-0 active:shadow-none"
+                  >
+                    Leave room
+                  </button>
+                </div>
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
         
         {/* Error Notification */}
         <AnimatePresence>

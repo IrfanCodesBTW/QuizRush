@@ -3,6 +3,7 @@ import { joinRoomSchema } from "@/lib/validation";
 import { requireCurrentSession } from "@/server/auth/current-session";
 import { joinRoom } from "@/server/quiz-service";
 import { z } from "zod";
+import { errorResponse } from "@/server/http/errors";
 
 export async function POST(request: Request) {
   try {
@@ -20,9 +21,6 @@ export async function POST(request: Request) {
         );
       }
     }
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to join room." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Unable to join room.");
   }
 }

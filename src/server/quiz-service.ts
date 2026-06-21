@@ -19,6 +19,8 @@ import { buildEngagementInsight, detectAchievements } from "@/server/agents/enga
 import { buildGameInsight } from "@/server/agents/game-orchestrator";
 import { hashPassword, verifyPassword } from "@/server/auth/password";
 import { getValkeyStore } from "@/server/valkey/store";
+import { NotFoundError } from "@/server/http/errors";
+import { getDeploymentReadiness } from "@/server/config/env";
 import {
   playerKey,
   roomChannel,
@@ -165,7 +167,7 @@ async function refreshRoomTtl(roomCode: string) {
 async function requireRoom(roomCode: string) {
   const room = parseRoom(await getValkeyStore().hgetall(roomKey(roomCode)));
   if (!room) {
-    throw new Error("Room not found or expired.");
+    throw new NotFoundError("Room not found or expired.");
   }
   return room;
 }
@@ -891,6 +893,7 @@ export async function getRuntimeStatus() {
     postgresMode: isPostgresConnected ? "connected" : "fallback",
     ttlSeconds: roomTtlSeconds,
     primitives: ["Hash", "Set", "Sorted Set", "Stream", "Pub/Sub", "TTL", "Atomic Update"],
+    readiness: getDeploymentReadiness(),
   };
 }
 

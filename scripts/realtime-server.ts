@@ -2,6 +2,9 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { allRoomsPattern } from "../src/server/valkey/keys";
 import { getValkeyStore } from "../src/server/valkey/store";
+import { getDeploymentReadiness, validateProductionEnvironment } from "../src/server/config/env";
+
+validateProductionEnvironment();
 
 const port = Number(process.env.SOCKET_PORT ?? 4001);
 const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -14,6 +17,7 @@ const httpServer = createServer((_request, response) => {
       ok: true,
       service: "quizrush-realtime",
       valkeyMode: valkey.mode,
+      readiness: getDeploymentReadiness(),
     }),
   );
 });
