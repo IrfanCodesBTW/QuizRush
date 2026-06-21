@@ -883,8 +883,12 @@ export async function getRoomSnapshot(roomCode: string): Promise<RoomSnapshot> {
 }
 
 export async function getRuntimeStatus() {
+  const { checkConnection } = await import("@/server/db/postgres");
+  const isPostgresConnected = await checkConnection();
+
   return {
     valkeyMode: getValkeyStore().mode,
+    postgresMode: isPostgresConnected ? "connected" : "fallback",
     ttlSeconds: roomTtlSeconds,
     primitives: ["Hash", "Set", "Sorted Set", "Stream", "Pub/Sub", "TTL", "Atomic Update"],
   };

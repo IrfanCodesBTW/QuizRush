@@ -38,6 +38,7 @@ import { ActivityFeed } from "./views/ActivityFeed";
 
 export type RuntimeStatus = {
   valkeyMode: "valkey" | "memory";
+  postgresMode?: "connected" | "fallback";
   ttlSeconds: number;
   primitives: ValkeyPrimitive[];
 };
@@ -609,11 +610,15 @@ export function QuizRushExperience() {
                 </div>
               </>
             ) : (
-              /* Guest/Home state - show live Valkey mode */
-              <div className="bg-emoji-yellow border-2 border-black rounded-full px-3 py-1 flex items-center justify-center gap-1 shadow-[2px_2px_0px_#000] hover:translate-y-[-2px] active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-transform">
-                <span className="material-symbols-outlined fill-icon text-[16px] md:text-[18px] text-black">electric_bolt</span>
+              /* Guest/Home state - show live DB modes */
+              <div className="bg-emoji-yellow border-2 border-black rounded-full px-3 py-1 flex items-center justify-center gap-2 shadow-[2px_2px_0px_#000] hover:translate-y-[-2px] active:translate-y-0 active:shadow-[0px_0px_0px_#000] transition-transform">
+                <span className="material-symbols-outlined fill-icon text-[16px] md:text-[18px] text-black">storage</span>
                 <span className="font-label-bold text-[11px] md:text-[12px] text-black uppercase font-black">
-                  {runtime ? (runtime.valkeyMode === "valkey" ? "Valkey Live" : "Memory Active") : "Connecting..."}
+                  {runtime ? (
+                    <>
+                      {runtime.valkeyMode === "valkey" ? "Valkey Live" : "Memory Active"} / {runtime.postgresMode === "connected" ? "Postgres Live" : "Fallback"}
+                    </>
+                  ) : "Connecting..."}
                 </span>
               </div>
             )}

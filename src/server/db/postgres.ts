@@ -1,7 +1,7 @@
 import pg from "pg";
 const { Pool } = pg;
 
-const connectionString = process.env.DATABASE_URL || "postgresql://app_user:QuizRush2026!Secure@db.gocglbrxxbfdljyllkhm.supabase.co:6543/postgres";
+const connectionString = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/quizrush";
 
 let pool: pg.Pool | null = null;
 let isConnected = false;
@@ -9,9 +9,11 @@ let lastConnectAttempt = 0;
 const CONNECT_COOLDOWN_MS = 10000; // 10 seconds cooldown between Postgres connection retries
 
 if (typeof window === "undefined") {
+  const isLocal = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
   pool = new Pool({
     connectionString,
-    connectionTimeoutMillis: 3000,
+    connectionTimeoutMillis: 5000,
+    ssl: isLocal ? undefined : { rejectUnauthorized: false },
   });
 }
 
@@ -256,5 +258,16 @@ export async function getUserHistory(userId: string): Promise<{ played: any[]; h
   } catch (error) {
     console.error("[Postgres] getUserHistory error:", error);
     return { played: [], hosted: [] };
+  }
+}
+
+export async function checkConnection(): Promise<boolean> {
+  const active = await initDb();
+  if (!active || !pool) return false;
+  try {
+    await pool.query("SELECT 1");
+    return true;
+  } catch {
+    return false;
   }
 }

@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: quizrush
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      target: runner
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/quizrush
+      VALKEY_URL: redis://valkey:6379
+      SESSION_SECRET: test-only-secret-do-not-use-in-prod
+      ROOM_TTL_SECONDS: 7200
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/runtime"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  tests:
+    build:
+      context: .
+      target: tester
+    environment:
+      APP_URL: http://app:3000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/quizrush
+      VALKEY_URL: redis://valkey:6379
+      SESSION_SECRET: test-only-secret-do-not-use-in-prod
+    command: npm run test:all
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      app:
+        condition: service_healthy

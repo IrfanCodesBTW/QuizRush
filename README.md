@@ -1,122 +1,68 @@
-# 🚀 QuizRush 
+# QuizRush ⚡️
 
-**QuizRush** is a real-time, AI-orchestrated multiplayer quiz arena. Designed as a showcase of modern web architecture, it transforms standard quizzes into living, highly interactive live experiences using the power of **Valkey** for sub-100ms low-latency state management, live synchronization, and event-driven architecture.
+QuizRush is a blazing-fast, real-time multiplayer quiz arena powered by **Valkey** (Redis fork) and **Next.js**. It features sub-millisecond game state synchronization, dual-tier resilience, and a brutalist, mobile-first design.
 
-![QuizRush Preview](docs/quizrush-preview.png) *(Placeholder for project screenshot)*
-
----
-
-## ✨ Key Features
-
-- **⚡ Real-Time Multiplayer Sync:** Instantaneous question delivery and answer collection powered by Valkey Pub/Sub and Socket.io.
-- **📊 Dynamic Analytics & Answer Distribution:** See how players answer in real-time with Mentimeter-style animated charts (powered by Recharts and Framer Motion).
-- **🏆 Live Animated Leaderboards:** Watch ranks shift instantly as points are awarded based on speed and accuracy.
-- **🤖 Agentic Orchestration Layer:**
-  - *Game Orchestrator:* Manages rounds, timers, and game progression.
-  - *Analytics Agent:* Generates natural-language insights from live answer distributions.
-  - *Engagement Agent:* Awards achievements, detects streaks, and drives player excitement.
-- **📄 Professional PDF Exports:** Hosts can download comprehensive post-game reports of analytics and rankings natively.
-- **🎨 "Playful Intelligence" UI:** Beautiful, celebration-first design using pastel gradients, floating cards, and micro-interactions.
+![QuizRush Hero](docs/assets/hero.png)
 
 ---
 
-## 🛠️ Tech Stack
+## 🏗️ Architecture & Multi-Tier Resilience
 
-### Frontend
-- **Framework:** Next.js 15 (App Router)
-- **Language:** TypeScript
-- **Styling:** Tailwind CSS
-- **Animations:** Framer Motion
-- **Data Visualization:** Recharts
+QuizRush is built to survive. We use a **Valkey-Primary, Postgres-Secondary** architecture.
 
-### Backend & Infrastructure
-- **Real-time Server:** Socket.io via custom Node server (`tsx`)
-- **Primary Data Store & Sync:** Valkey (via `ioredis`)
-- **PDF Generation:** `@react-pdf/renderer`
+- **Valkey** handles all hot paths: room state, leaderboards, real-time player presence, and question tracking. If Valkey is up, the game is playable.
+- **Postgres** handles persistent records: user accounts, historical data, and guest sessions. 
+- **Resilience**: If Postgres goes down mid-game, QuizRush automatically degrades to `Fallback` mode. Live games continue uninterrupted, and guest players can still join and play exclusively via Valkey.
 
----
+> **Note:** Check the live connection status in the lobby! The status pill indicates whether we're running fully connected or in fallback mode.
 
-## 🏗️ Valkey Data Architecture
+## 🚀 Features
 
-QuizRush leverages Valkey not just as a cache, but as the core engine driving the platform:
+- **Real-time Multiplayer:** Sub-millisecond sync powered by Valkey Pub/Sub and Streams.
+- **Guest Play:** Jump straight into a room with zero sign-up friction.
+- **Host Dashboard:** Full control over game flow, revealing answers, and advancing rounds.
+- **Dockerized E2E Tests:** Comprehensive Playwright test suite that actively kills the Postgres container mid-test to verify resilience!
 
-- **Hashes:** Stores `player:{id}` state (username, score, rank, streak).
-- **Sets:** Manages `room:{roomId}:players` membership.
-- **Sorted Sets:** Powers the real-time `leaderboard:{roomId}` via atomic score updates.
-- **Streams:** Maintains an append-only event history `room:{roomId}:events` for activity feeds and PDF generation.
-- **Pub/Sub:** Handles low-latency broadcasting (`quiz:start`, `quiz:question`, `leaderboard:update`).
-- **TTL:** Manages room lifecycle cleanup automatically.
+## 📸 Screenshots
 
----
+| Host Dashboard | Player Leaderboard |
+| -------------- | ------------------ |
+| ![Host Dashboard](docs/assets/host-dashboard.png) | ![Leaderboard](docs/assets/leaderboard.png) |
 
-## 🚀 Getting Started
+## 🛠️ Quickstart
 
 ### Prerequisites
+- Node.js 20+
+- Docker & Docker Compose
 
-- Node.js 18.x or higher
-- A running **Valkey** instance (or Redis compatible server)
+### 1. Environment Setup
 
-### Installation
+Copy the example environment file:
+```bash
+cp .env.example .env
+```
+*(Ensure `DATABASE_URL` and `VALKEY_URL` point to your local instances. See `.env.example` for details).*
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yourusername/quizrush.git
-   cd quizrush
-   ```
+### 2. Run Locally
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+Start the Valkey and Postgres dependencies (or run via the test compose file):
+```bash
+docker-compose -f docker-compose.test.yml up -d postgres valkey
+```
 
-3. **Configure Environment Variables:**
-   Create a `.env.local` file in the root directory (you can copy `.env.example` if available):
-   ```env
-   VALKEY_URL=redis://localhost:6379
-   NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
-   ```
+Install dependencies and start the dev server + WebSocket engine:
+```bash
+npm install
+npm run dev:all
+```
 
-4. **Run the Development Servers:**
-   QuizRush requires both the Next.js frontend and the WebSocket server to be running simultaneously. We've included a handy concurrent script:
-   ```bash
-   npm run dev:all
-   ```
-   *This starts Next.js on `localhost:3000` and the Socket.io server on `localhost:3001`.*
+### 3. Run E2E Tests
 
----
+We include a rugged test suite that literally shuts down the database mid-run to prove our resilience architecture works.
 
-## 📂 Project Structure
-
-```text
-quizrush/
-├── src/
-│   ├── app/             # Next.js 15 App Router pages and API routes
-│   ├── features/        # Feature-based UI components (quiz experience, lobbys)
-│   ├── lib/             # Utilities and shared logic
-│   ├── server/          # Backend logic, Valkey config, Agents, PDF generator
-│   └── types/           # Global TypeScript definitions
-├── scripts/             # Custom dev scripts (e.g., realtime-server.ts)
-└── docs/                # PRD and planning documents
+```bash
+docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
 ```
 
 ---
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/yourusername/quizrush/issues).
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📝 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
-
----
-
-*Built with ❤️ for the Valkey Hackathon.*
+*Built with Valkey, Next.js, and raw adrenaline.*
